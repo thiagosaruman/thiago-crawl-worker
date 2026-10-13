@@ -13,7 +13,14 @@ from urllib.request import Request, urlopen
 from .crawler import CrawlRun, crawl
 from .fetcher import ScraplingFetcher
 from .github_oidc import get_actions_oidc_token
-from .remote_job import build_result_parts, fetch_job_payload, finalize_job, post_result_part
+from .remote_job import (
+    CONTROL_PLANE_USER_AGENT,
+    RemoteJobError,
+    build_result_parts,
+    fetch_job_payload,
+    finalize_job,
+    post_result_part,
+)
 
 CONTROL_PLANE_URL = "https://thiago-crawl-build.thiagosaruman.workers.dev"
 OIDC_AUDIENCE = "thiago-crawl-control-plane"
@@ -44,7 +51,11 @@ def _safe_probe_error(raw: bytes) -> str | None:
 
 
 def _probe_url(url: str) -> dict[str, int | str | None]:
-    request = Request(url, headers={"Accept": "application/json"}, method="GET")
+    request = Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": CONTROL_PLANE_USER_AGENT},
+        method="GET",
+    )
     try:
         with urlopen(request, timeout=20) as response:
             status = int(getattr(response, "status", 200) or 200)
@@ -124,16 +135,27 @@ def _format_probe_value(value: int | str | None) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    boundary = probe_control_plane_boundary(CONTROL_PLANE_URL, args.job_id)
-    print(
-        "boundary_health_status=" + _format_probe_value(boundary["health"]["status"])
-        + " boundary_health_error=" + _format_probe_value(boundary["health"]["error"])
-    )
-    print(
-        "boundary_internal_unauth_status=" + _format_probe_value(boundary["internal_unauth"]["status"])
-        + " boundary_internal_unauth_error=" + _format_probe_value(boundary["internal_unauth"]["error"])
-    )
-    result = asyncio.run(run_remote_job(args.job_id))
+    try:
+        boundary = probe_control_plane_boundary(CONTROL_PLANE_URL, args.job_id)
+        print(
+            "boundary_health_status=" + _format_probe_value(boundary["health"]["status"])
+            + " boundary_health_error=" + _format_probe_value(boundary["health"]["error"])
+        )
+        print(
+            "boundary_internal_unauth_status=" + _format_probe_value(boundary["internal_unauth"]["status"])
+            + " boundary_internal_unauth_error=" + _format_probe_value(boundary["internal_unauth"]["error"])
+        )
+        result = asyncio.run(run_remote_job(args.job_id))
+    except RemoteJobError as exc:
+        line = f"remote_job_error={exc.category}"
+        if exc.remote_error is not None:
+            line += f" remote_job_code={exc.remote_error}"
+        print(line)
+        return 2
+    except Exception:
+        print("remote_job_error=unexpected")
+        return 2
+
     status = str(result.get("status", "unknown"))
     print(f"remote_job_status={status}")
     return 0 if status in {"completed", "partial"} else 2
