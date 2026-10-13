@@ -17,13 +17,17 @@ from .security import registrable_domain
 MAX_TEXT_CHUNK_BYTES = 512 * 1024
 DEFAULT_MAX_BODY_BYTES = 786_432
 _JOB_ID = re.compile(r"[A-Za-z0-9_-]{8,128}\Z")
+_SAFE_REMOTE_ERROR = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+_MAX_ERROR_BODY_BYTES = 4096
 
 
 class RemoteJobError(RuntimeError):
-    def __init__(self, category: str, *, status: int | None = None):
+    def __init__(self, category: str, *, status: int | None = None, remote_error: str | None = None):
         self.category = category
         self.status = status
-        super().__init__(f"remote job request failed: {category}")
+        self.remote_error = remote_error
+        suffix = f" ({remote_error})" if remote_error is not None else ""
+        super().__init__(f"remote job request failed: {category}{suffix}")
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -74,6 +78,25 @@ def _category_for_status(status: int) -> str:
     return "http_error"
 
 
+def _safe_http_error_code(exc: HTTPError) -> str | None:
+    try:
+        raw = exc.read(_MAX_ERROR_BODY_BYTES + 1)
+    except Exception:
+        return None
+    if not raw or len(raw) > _MAX_ERROR_BODY_BYTES:
+        return None
+    try:
+        decoded = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    value = decoded.get("error")
+    if not isinstance(value, str) or not _SAFE_REMOTE_ERROR.fullmatch(value):
+        return None
+    return value
+
+
 def _request_json(
     method: str,
     url: str,
@@ -99,7 +122,11 @@ def _request_json(
                 raise RemoteJobError(_category_for_status(status), status=status)
             raw = response.read()
     except HTTPError as exc:
-        raise RemoteJobError(_category_for_status(exc.code), status=exc.code) from None
+        raise RemoteJobError(
+            _category_for_status(exc.code),
+            status=exc.code,
+            remote_error=_safe_http_error_code(exc),
+        ) from None
     except (URLError, TimeoutError, OSError):
         raise RemoteJobError("network_error") from None
 
