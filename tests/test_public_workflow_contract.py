@@ -26,6 +26,17 @@ def test_public_workflow_contract():
     assert "CRAWL_TOPIC" not in text
 
 
+def test_workflow_dispatch_runs_only_the_opaque_remote_job_after_tests():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    test_pos = text.index("python -m pytest -q")
+    runner_pos = text.index('python -m thiago_crawl.runner --job-id "$JOB_ID"')
+    assert runner_pos > test_pos
+    runner_block = text[text.rfind("- name:", 0, runner_pos):runner_pos + 80]
+    assert "if: github.event_name == 'workflow_dispatch'" in runner_block
+    assert "JOB_ID: ${{ inputs.job_id }}" in runner_block
+    assert "secrets." not in runner_block
+
+
 def test_actions_are_sha_pinned_and_checkout_does_not_persist_credentials():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in text
