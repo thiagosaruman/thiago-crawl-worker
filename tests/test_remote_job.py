@@ -1,4 +1,3 @@
-import hashlib
 import io
 import json
 from urllib.error import HTTPError, URLError
@@ -130,7 +129,7 @@ def test_build_result_parts_is_stable_bounded_and_contains_full_provenance():
     assert document["textByteLength"] == len(sample_document().text_content.encode("utf-8"))
     assert document["totalChunks"] == 1
     assert document["chunkStart"] == 0
-    assert document["textChunks"] == [sample_document().text_content]
+    assert document["textChunks"] == [{"index": 0, "text": sample_document().text_content}]
     assert len(json_bytes(part)) <= 786_432
 
 
@@ -149,8 +148,9 @@ def test_document_larger_than_two_mib_is_fragmented_and_reconstructs_exactly():
     assert all(fragment["totalChunks"] == len(fragments) for fragment in fragments)
     assert [fragment["chunkStart"] for fragment in fragments] == list(range(len(fragments)))
     chunks = [fragment["textChunks"][0] for fragment in fragments]
-    assert all(len(chunk.encode("utf-8")) <= 512 * 1024 for chunk in chunks)
-    assert "".join(chunks) == text
+    assert [chunk["index"] for chunk in chunks] == list(range(len(chunks)))
+    assert all(len(chunk["text"].encode("utf-8")) <= 512 * 1024 for chunk in chunks)
+    assert "".join(chunk["text"] for chunk in chunks) == text
 
 
 def test_post_part_and_finalize_use_expected_routes_and_map_http_errors(monkeypatch):
@@ -167,7 +167,7 @@ def test_post_part_and_finalize_use_expected_routes_and_map_http_errors(monkeypa
     assert finalize_job("https://control.example", "job_opaque_123", summary, "token-b") == {"ok": True}
     assert calls[0][0].endswith("/internal/jobs/job_opaque_123/parts")
     assert calls[1][0].endswith("/internal/jobs/job_opaque_123/finalize")
-    assert calls[0][1:] and calls[0][1] == "POST"
+    assert calls[0][1] == "POST"
     assert calls[0][2] == "Bearer token-a"
     assert calls[1][2] == "Bearer token-b"
     assert calls[0][3] == "application/json"
