@@ -198,3 +198,41 @@ def test_post_part_and_finalize_use_expected_routes_and_map_http_errors(monkeypa
     with pytest.raises(RemoteJobError) as caught:
         finalize_job("https://control.example", "job_opaque_123", summary, "token")
     assert caught.value.category == "network_error"
+
+
+def test_http_error_exposes_only_safe_worker_error_code(monkeypatch):
+    body = json.dumps({
+        "error": "runner_job_binding_mismatch",
+        "token": "do-not-leak",
+        "url": "https://secret.example/internal",
+    }).encode()
+
+    def forbidden(request, timeout):
+        raise HTTPError(request.full_url, 403, "Forbidden", {}, io.BytesIO(body))
+
+    monkeypatch.setattr("thiago_crawl.remote_job.urlopen", forbidden)
+    with pytest.raises(RemoteJobError) as caught:
+        fetch_job_payload("https://control.example", "job_opaque_123", "oidc-secret")
+
+    assert caught.value.status == 403
+    assert caught.value.category == "forbidden"
+    assert "runner_job_binding_mismatch" in str(caught.value)
+    assert "do-not-leak" not in str(caught.value)
+    assert "secret.example" not in str(caught.value)
+    assert "oidc-secret" not in str(caught.value)
+
+
+def test_http_error_ignores_untrusted_error_text(monkeypatch):
+    unsafe = "runner_auth_invalid; token=do-not-leak"
+    body = json.dumps({"error": unsafe, "secret": "also-do-not-leak"}).encode()
+
+    def forbidden(request, timeout):
+        raise HTTPError(request.full_url, 403, "Forbidden", {}, io.BytesIO(body))
+
+    monkeypatch.setattr("thiago_crawl.remote_job.urlopen", forbidden)
+    with pytest.raises(RemoteJobError) as caught:
+        fetch_job_payload("https://control.example", "job_opaque_123", "oidc-secret")
+
+    message = str(caught.value)
+    assert message == "remote job request failed: forbidden"
+    assert "do-not-leak" not in message
