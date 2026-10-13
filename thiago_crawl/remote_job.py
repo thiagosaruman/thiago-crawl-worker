@@ -16,6 +16,7 @@ from .security import registrable_domain
 
 MAX_TEXT_CHUNK_BYTES = 512 * 1024
 DEFAULT_MAX_BODY_BYTES = 786_432
+CONTROL_PLANE_USER_AGENT = "Mozilla/5.0 (compatible; ThiagoCrawlWorker/1.0; +https://github.com/thiagosaruman/thiago-crawl-worker)"
 _JOB_ID = re.compile(r"[A-Za-z0-9_-]{8,128}\Z")
 _SAFE_REMOTE_ERROR = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _MAX_ERROR_BODY_BYTES = 4096
@@ -111,6 +112,7 @@ def _request_json(
     headers = {
         "Authorization": f"Bearer {oidc_token}",
         "Accept": "application/json",
+        "User-Agent": CONTROL_PLANE_USER_AGENT,
     }
     if body is not None:
         headers["Content-Type"] = "application/json"
