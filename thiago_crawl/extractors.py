@@ -175,6 +175,7 @@ def extract_generic(page: FetchedPage) -> NormalizedDocument:
         fetch_strategy=page.strategy,
         extractor="generic",
         metadata=metadata,
+        http_status=page.http_status,
     )
 
 
@@ -260,6 +261,7 @@ def extract_news(page: FetchedPage) -> NormalizedDocument:
         fetch_strategy=page.strategy,
         extractor="newspaper4k",
         metadata=metadata,
+        http_status=page.http_status,
     )
 
 
