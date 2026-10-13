@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import socket
 import pytest
 from thiago_crawl.models import FetchStrategy, FetchedPage
@@ -48,3 +49,30 @@ def test_default_stealth_path_never_enables_cloudflare_solver(monkeypatch):
         @classmethod
         async def async_fetch(cls,url,**kwargs): captured.update(kwargs); return make_page(strategy=FetchStrategy.STEALTH,url=url)
     scrapling_module=types.ModuleType("scrapling"); fetchers_module=types.ModuleType("scrapling.fetchers"); fetchers_module.StealthyFetcher=FakeStealthyFetcher; monkeypatch.setitem(sys.modules,"scrapling",scrapling_module); monkeypatch.setitem(sys.modules,"scrapling.fetchers",fetchers_module); fetcher=ScraplingFetcher(resolver=public_resolver); page=run(fetcher._default_stealth_fetch("https://example.com/")); assert page.strategy is FetchStrategy.STEALTH; assert captured["solve_cloudflare"] is False
+
+def test_default_static_fetch_suppresses_scrapling_target_logging(monkeypatch, caplog):
+    import sys, types
+    private_target="https://private.example/research/secret-case"
+    class FakeResponse:
+        status=200
+    class FakeAsyncFetcher:
+        @classmethod
+        async def get(cls,url,**kwargs):
+            logging.getLogger("scrapling").info("Fetched (200) <GET %s>", url)
+            return FakeResponse()
+    scrapling_module=types.ModuleType("scrapling")
+    fetchers_module=types.ModuleType("scrapling.fetchers")
+    fetchers_module.AsyncFetcher=FakeAsyncFetcher
+    monkeypatch.setitem(sys.modules,"scrapling",scrapling_module)
+    monkeypatch.setitem(sys.modules,"scrapling.fetchers",fetchers_module)
+    logger=logging.getLogger("scrapling")
+    old_disabled,old_level,old_propagate=logger.disabled,logger.level,logger.propagate
+    try:
+        logger.disabled=False; logger.setLevel(logging.INFO); logger.propagate=True
+        caplog.set_level(logging.INFO)
+        fetcher=ScraplingFetcher(resolver=public_resolver)
+        response=run(fetcher._default_static_fetch(private_target))
+        assert response.status==200
+        assert private_target not in caplog.text
+    finally:
+        logger.disabled=old_disabled; logger.setLevel(old_level); logger.propagate=old_propagate
