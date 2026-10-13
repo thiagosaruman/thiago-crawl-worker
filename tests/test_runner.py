@@ -112,7 +112,12 @@ def test_boundary_probe_reports_only_safe_status_and_error_code(monkeypatch):
     seen = []
 
     def fake_urlopen(request, timeout):
-        seen.append((request.full_url, request.get_header("Authorization"), timeout))
+        seen.append((
+            request.full_url,
+            request.get_header("Authorization"),
+            request.get_header("User-agent"),
+            timeout,
+        ))
         if request.full_url.endswith("/health"):
             return FakeResponse(b'{"service":"thiago-crawl","secret":"do-not-leak"}', 200)
         body = json.dumps({
@@ -129,7 +134,11 @@ def test_boundary_probe_reports_only_safe_status_and_error_code(monkeypatch):
         "health": {"status": 200, "error": None},
         "internal_unauth": {"status": 401, "error": "runner_auth_required"},
     }
-    assert all(authorization is None for _, authorization, _ in seen)
-    assert all(timeout == 20 for _, _, timeout in seen)
+    assert all(authorization is None for _, authorization, _, _ in seen)
+    assert all(
+        user_agent == "Mozilla/5.0 (compatible; ThiagoCrawlWorker/1.0; +https://github.com/thiagosaruman/thiago-crawl-worker)"
+        for _, _, user_agent, _ in seen
+    )
+    assert all(timeout == 20 for _, _, _, timeout in seen)
     assert "do-not-leak" not in repr(result)
     assert "secret.example" not in repr(result)
