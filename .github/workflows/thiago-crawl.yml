@@ -57,3 +57,9 @@ jobs:
 
       - name: Run worker test suite
         run: python -m pytest -q
+
+      - name: Execute remote crawl job
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+        run: python -m thiago_crawl.runner --job-id "$JOB_ID"
