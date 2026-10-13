@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -22,6 +23,12 @@ _BLOCK_MARKERS = (
     "cf-chl-",
 )
 _RETRYABLE_HTTP = {401, 403, 408, 425, 429}
+
+
+def _silence_scrapling_logs() -> None:
+    logger = logging.getLogger("scrapling")
+    logger.disabled = True
+    logger.propagate = False
 
 
 @dataclass(frozen=True)
@@ -137,6 +144,7 @@ class ScraplingFetcher:
         stealth_fetch: FetchCallable | None = None,
         resolver=socket.getaddrinfo,
     ):
+        _silence_scrapling_logs()
         self.resolver = resolver
         self._network_guard = _AsyncNetworkGuard(resolver)
         self._static_fetch = static_fetch or self._default_static_fetch
@@ -233,6 +241,7 @@ class ScraplingFetcher:
         raise FetchExhaustedError(tuple(attempts))
 
     async def _default_static_fetch(self, url: str):
+        _silence_scrapling_logs()
         from scrapling.fetchers import AsyncFetcher
 
         current = url
@@ -263,11 +272,13 @@ class ScraplingFetcher:
         return page
 
     async def _default_dynamic_fetch(self, url: str):
+        _silence_scrapling_logs()
         from scrapling.fetchers import DynamicFetcher
 
         return await DynamicFetcher.async_fetch(url, headless=True, disable_resources=True, page_setup=self._browser_page_setup, timeout=30_000, retries=1)
 
     async def _default_stealth_fetch(self, url: str):
+        _silence_scrapling_logs()
         from scrapling.fetchers import StealthyFetcher
 
         return await StealthyFetcher.async_fetch(url, headless=True, disable_resources=True, page_setup=self._browser_page_setup, solve_cloudflare=False, timeout=30_000, retries=1)
