@@ -6,9 +6,11 @@ from urllib.error import HTTPError
 
 from thiago_crawl.crawler import CrawlFailure, CrawlRun
 from thiago_crawl.models import CrawlRequest
+from thiago_crawl.remote_job import RemoteJobError
 from thiago_crawl.runner import (
     CONTROL_PLANE_URL,
     OIDC_AUDIENCE,
+    main,
     probe_control_plane_boundary,
     run_remote_job,
 )
@@ -142,3 +144,44 @@ def test_boundary_probe_reports_only_safe_status_and_error_code(monkeypatch):
     assert all(timeout == 20 for _, _, _, timeout in seen)
     assert "do-not-leak" not in repr(result)
     assert "secret.example" not in repr(result)
+
+
+def test_main_sanitizes_remote_job_error_without_traceback(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "thiago_crawl.runner.probe_control_plane_boundary",
+        lambda base, job: {
+            "health": {"status": 200, "error": None},
+            "internal_unauth": {"status": 401, "error": "runner_auth_required"},
+        },
+    )
+
+    async def fail(job_id):
+        raise RemoteJobError("forbidden", status=403, remote_error="runner_auth_invalid")
+
+    monkeypatch.setattr("thiago_crawl.runner.run_remote_job", fail)
+    assert main(["--job-id", "job_12345678"]) == 2
+    output = capsys.readouterr()
+    assert "remote_job_error=forbidden" in output.out
+    assert "remote_job_code=runner_auth_invalid" in output.out
+    assert "Traceback" not in output.err
+
+
+def test_main_sanitizes_unexpected_exception_without_echoing_message(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "thiago_crawl.runner.probe_control_plane_boundary",
+        lambda base, job: {
+            "health": {"status": 200, "error": None},
+            "internal_unauth": {"status": 401, "error": "runner_auth_required"},
+        },
+    )
+
+    async def fail(job_id):
+        raise RuntimeError("https://secret.example/token/do-not-leak")
+
+    monkeypatch.setattr("thiago_crawl.runner.run_remote_job", fail)
+    assert main(["--job-id", "job_12345678"]) == 2
+    output = capsys.readouterr()
+    assert "remote_job_error=unexpected" in output.out
+    assert "secret.example" not in output.out
+    assert "do-not-leak" not in output.out
+    assert "Traceback" not in output.err
