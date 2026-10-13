@@ -84,6 +84,7 @@ def test_fetch_job_payload_uses_private_bearer_and_validates_request(monkeypatch
         seen["url"] = request.full_url
         seen["authorization"] = request.get_header("Authorization")
         seen["accept"] = request.get_header("Accept")
+        seen["user_agent"] = request.get_header("User-agent")
         seen["timeout"] = timeout
         return FakeResponse(json.dumps(response).encode())
 
@@ -97,6 +98,7 @@ def test_fetch_job_payload_uses_private_bearer_and_validates_request(monkeypatch
         "url": f"https://control.example/internal/jobs/{job_id}/payload",
         "authorization": "Bearer oidc-secret",
         "accept": "application/json",
+        "user_agent": "Mozilla/5.0 (compatible; ThiagoCrawlWorker/1.0; +https://github.com/thiagosaruman/thiago-crawl-worker)",
         "timeout": 20,
     }
 
