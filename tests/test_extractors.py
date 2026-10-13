@@ -48,3 +48,32 @@ def test_content_hash_normalizes_whitespace_and_utf8_deterministically():
 
 def test_extract_document_routes_to_news_and_generic(monkeypatch):
     news=page_from("news_pt.html","https://noticias.example.com/2026/10/10/mudanca"); install_fake_newspaper(monkeypatch,text="Corpo de notícia relevante. "*12); assert extract_document(news).document_type=="news"; docs=page_from("docs_page.html","https://docs.example.com/docs/atlas/admin"); assert extract_document(docs).document_type=="docs"
+
+
+def test_normalized_document_preserves_origin_http_status(monkeypatch):
+    generic = page_from("docs_page.html", "https://docs.example.com/docs/atlas/admin")
+    generic = FetchedPage(
+        url=generic.url,
+        title=generic.title,
+        html=generic.html,
+        text_hint=generic.text_hint,
+        links=generic.links,
+        http_status=206,
+        strategy=generic.strategy,
+        metadata=generic.metadata,
+    )
+    assert extract_generic(generic).http_status == 206
+
+    news = page_from("news_pt.html", "https://noticias.example.com/2026/10/10/mudanca")
+    news = FetchedPage(
+        url=news.url,
+        title=news.title,
+        html=news.html,
+        text_hint=news.text_hint,
+        links=news.links,
+        http_status=203,
+        strategy=news.strategy,
+        metadata=news.metadata,
+    )
+    install_fake_newspaper(monkeypatch, text="Corpo de notícia relevante. " * 12)
+    assert extract_news(news).http_status == 203
