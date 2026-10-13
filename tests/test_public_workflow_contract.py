@@ -24,3 +24,10 @@ def test_public_workflow_contract():
     assert "set -x" not in text
     assert "TARGET_URL" not in text
     assert "CRAWL_TOPIC" not in text
+
+
+def test_actions_are_sha_pinned_and_checkout_does_not_persist_credentials():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in text
+    assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in text
+    assert "persist-credentials: false" in text
