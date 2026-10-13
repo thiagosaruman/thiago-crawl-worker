@@ -46,3 +46,4 @@ class NormalizedDocument:
     fetch_strategy: FetchStrategy
     extractor: str
     metadata: dict[str, object]
+    http_status: int = 200
