@@ -1,0 +1,57 @@
+name: Thiago Crawl Public Worker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Opaque control-plane job identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PUBLIC_RUNNER_MODE: redacted
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install worker dependencies and browser runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          scrapling install --force
+
+      - name: Validate opaque dispatch input
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          JOB_ID: ${{ inputs.job_id }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          job_id = os.environ.get("JOB_ID", "")
+          if not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", job_id):
+              raise SystemExit("invalid opaque job_id")
+          print("dispatch_input=accepted")
+          PY
+
+      - name: Run worker test suite
+        run: python -m pytest -q
