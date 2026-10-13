@@ -1,9 +1,32 @@
 import asyncio
+import io
+import json
 from types import SimpleNamespace
+from urllib.error import HTTPError
 
 from thiago_crawl.crawler import CrawlFailure, CrawlRun
 from thiago_crawl.models import CrawlRequest
-from thiago_crawl.runner import CONTROL_PLANE_URL, OIDC_AUDIENCE, run_remote_job
+from thiago_crawl.runner import (
+    CONTROL_PLANE_URL,
+    OIDC_AUDIENCE,
+    probe_control_plane_boundary,
+    run_remote_job,
+)
+
+
+class FakeResponse:
+    def __init__(self, body: bytes = b"{}", status: int = 200):
+        self._body = io.BytesIO(body)
+        self.status = status
+
+    def read(self, amount: int = -1):
+        return self._body.read(amount)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 def test_remote_runner_orchestrates_private_payload_crawl_parts_and_finalize_without_logging_content():
@@ -83,3 +106,30 @@ def test_remote_runner_uses_fixed_https_control_plane_and_non_url_oidc_audience(
     assert CONTROL_PLANE_URL == "https://thiago-crawl-build.thiagosaruman.workers.dev"
     assert OIDC_AUDIENCE == "thiago-crawl-control-plane"
     assert OIDC_AUDIENCE not in CONTROL_PLANE_URL
+
+
+def test_boundary_probe_reports_only_safe_status_and_error_code(monkeypatch):
+    seen = []
+
+    def fake_urlopen(request, timeout):
+        seen.append((request.full_url, request.get_header("Authorization"), timeout))
+        if request.full_url.endswith("/health"):
+            return FakeResponse(b'{"service":"thiago-crawl","secret":"do-not-leak"}', 200)
+        body = json.dumps({
+            "error": "runner_auth_required",
+            "secret": "do-not-leak",
+            "url": "https://secret.example/internal",
+        }).encode()
+        raise HTTPError(request.full_url, 401, "Unauthorized", {}, io.BytesIO(body))
+
+    monkeypatch.setattr("thiago_crawl.runner.urlopen", fake_urlopen)
+    result = probe_control_plane_boundary(CONTROL_PLANE_URL, "job_12345678")
+
+    assert result == {
+        "health": {"status": 200, "error": None},
+        "internal_unauth": {"status": 401, "error": "runner_auth_required"},
+    }
+    assert all(authorization is None for _, authorization, _ in seen)
+    assert all(timeout == 20 for _, _, timeout in seen)
+    assert "do-not-leak" not in repr(result)
+    assert "secret.example" not in repr(result)
