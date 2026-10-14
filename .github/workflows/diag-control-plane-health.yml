@@ -3,6 +3,7 @@ name: Diagnostic control-plane health
 on:
   push:
     branches: [diag/control-plane-health]
+  pull_request:
 
 permissions:
   contents: read
