@@ -1,0 +1,19 @@
+name: Diagnostic control-plane health
+
+on:
+  push:
+    branches: [diag/control-plane-health]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Probe public health endpoint
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --include \
+            https://thiago-crawl-build.thiagosaruman.workers.dev/health
