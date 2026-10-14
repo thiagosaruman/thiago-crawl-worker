@@ -7,6 +7,7 @@ WORKFLOW = Path(".github/workflows/thiago-crawl.yml")
 def test_public_workflow_contract():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "workflow_dispatch:" in text
+    assert "run-name: Thiago Crawl ${{ inputs.job_id }}" in text
     inputs = re.search(r"workflow_dispatch:\s*\n\s*inputs:\s*\n(?P<body>.*?)(?=\npermissions:)", text, re.S)
     assert inputs is not None
     body = inputs.group("body")
