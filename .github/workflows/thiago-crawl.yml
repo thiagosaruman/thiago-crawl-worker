@@ -1,4 +1,5 @@
 name: Thiago Crawl Public Worker
+run-name: Thiago Crawl ${{ inputs.job_id }}
 
 on:
   push:
