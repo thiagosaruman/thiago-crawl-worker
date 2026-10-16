@@ -1,0 +1,30 @@
+name: MCP ChatGPT Feasibility Spike
+
+on:
+  pull_request:
+    paths:
+      - 'spikes/mcp-chatgpt/**'
+      - '.github/workflows/mcp-spike.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: spikes/mcp-chatgpt
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run protocol tests
+        run: npm test

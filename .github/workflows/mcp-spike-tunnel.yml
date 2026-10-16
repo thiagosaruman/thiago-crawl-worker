@@ -1,0 +1,76 @@
+name: MCP Spike Temporary Tunnel
+
+on:
+  pull_request:
+    paths:
+      - 'spikes/mcp-chatgpt/**'
+      - '.github/workflows/mcp-spike-tunnel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  tunnel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: spikes/mcp-chatgpt
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Start MCP spike server
+        run: |
+          node server.mjs > server.log 2>&1 &
+          echo $! > server.pid
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:8787/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat server.log
+          exit 1
+      - name: Install cloudflared
+        run: |
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+      - name: Open temporary public tunnel
+        id: tunnel
+        run: |
+          ./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787 > tunnel.log 2>&1 &
+          echo $! > tunnel.pid
+          for i in {1..30}; do
+            URL=$(grep -oE 'https://[-a-z0-9]+\.trycloudflare\.com' tunnel.log | head -1 || true)
+            if [ -n "$URL" ]; then
+              echo "mcp_url=$URL/mcp" >> "$GITHUB_OUTPUT"
+              echo "health_url=$URL/" >> "$GITHUB_OUTPUT"
+              echo "TEMP_MCP_ENDPOINT=$URL/mcp"
+              echo "TEMP_HEALTH_ENDPOINT=$URL/"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat tunnel.log
+          exit 1
+      - name: Publish temporary endpoint on this PR
+        if: github.event_name == 'pull_request'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MCP_URL: ${{ steps.tunnel.outputs.mcp_url }}
+          HEALTH_URL: ${{ steps.tunnel.outputs.health_url }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr comment "$PR_URL" --body "### Temporary MCP spike endpoint\n\n- MCP: \`$MCP_URL\`\n- Health: \`$HEALTH_URL\`\n\nThis URL is ephemeral and remains alive only while the **MCP Spike Temporary Tunnel** workflow is running (about 20 minutes)."
+      - name: Keep tunnel alive for manual ChatGPT test
+        run: |
+          echo "Temporary tunnel active for up to 20 minutes."
+          sleep 1200
