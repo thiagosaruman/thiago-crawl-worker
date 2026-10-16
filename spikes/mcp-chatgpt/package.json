@@ -1,0 +1,12 @@
+{
+  "name": "crawl-mcp-chatgpt-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "zod": "latest"
+  }
+}
